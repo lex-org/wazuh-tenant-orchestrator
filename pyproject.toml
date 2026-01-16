@@ -1,0 +1,43 @@
+[tool.poetry]
+name = "wazuh-tenant-orchestrator"
+version = "0.1.0"
+description = "CLI tool for automated multi-tenant provisioning on Wazuh SIEM"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+license = "MIT"
+keywords = ["wazuh", "siem", "multi-tenancy", "msp", "security", "opensearch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring",
+]
+
+[tool.poetry.urls]
+Homepage = "https://github.com/yourusername/wazuh-tenant-orchestrator"
+Repository = "https://github.com/yourusername/wazuh-tenant-orchestrator"
+Issues = "https://github.com/yourusername/wazuh-tenant-orchestrator/issues"
+
+[tool.poetry.dependencies]
+python = ">=3.11"
+requests = ">=2.32.5"
+python-dotenv = ">=1.0.0"
+urllib3 = ">=2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-mock = ">=3.12.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

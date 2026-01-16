@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  wazuh-tenant-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config:ro
+    command: ["python", "main.py", "--tenant", "${TENANT_NAME}", "--webhook", "${WEBHOOK_URL}"]
+
+# Note: This compose file is for the orchestrator tool only.
+# It assumes you have Wazuh Manager and OpenSearch running separately.
+# For a full Wazuh stack, see: https://documentation.wazuh.com/current/deployment-options/docker/index.html

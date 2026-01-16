@@ -1,0 +1,25 @@
+{
+  "wazuh_api_versions": {
+    "4.10.x": {
+      "create_group": {
+        "method": "POST",
+        "use_body": true,
+        "payload_key": "group_id"
+      }
+    },
+    "4.3.x": {
+      "create_group": {
+        "method": "POST",
+        "use_body": false,
+        "query_key": "group_id"
+      }
+    },
+    "default": {
+      "create_group": {
+        "method": "POST",
+        "use_body": true,
+        "payload_key": "group_id"
+      }
+    }
+  }
+}
