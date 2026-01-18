@@ -26,6 +26,8 @@ wheels/
 .installed.cfg
 *.egg
 
+orchestrator.log
+
 # IDE
 .idea/
 .vscode/
