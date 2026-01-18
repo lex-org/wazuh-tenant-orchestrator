@@ -2,6 +2,8 @@ import requests
 import os
 import urllib3
 from dotenv import load_dotenv
+from core.logger import logger
+from core.exceptions import OpenSearchAPIError
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -15,12 +17,38 @@ class OpenSearchClient:
         self.password = os.getenv('OPENSEARCH_PASSWORD', 'SecretPassword')
         self.base_url = f"https://{self.host}:{self.port}"
 
+    def _channel_exists(self, tenant_id):
+        """Check if a notification channel for the tenant already exists."""
+        url = f"{self.base_url}/_plugins/_notifications/configs"
+        channel_name = f"Channel-{tenant_id}"
+
+        try:
+            response = requests.get(
+                url,
+                auth=(self.user, self.password),
+                verify=False
+            )
+            if response.status_code == 200:
+                configs = response.json().get('config_list', [])
+                for config in configs:
+                    if config.get('config', {}).get('name') == channel_name:
+                        return config.get('config_id')
+            return None
+        except requests.exceptions.RequestException:
+            return None
+
     def create_notification_channel(self, tenant_id, webhook_url):
         """
         Create a webhook notification channel for a specific tenant.
-        This is the bridge to your ticketing system.
+        Idempotent: returns existing channel if already exists.
         """
-        # OpenSearch Notifications plugin endpoint
+        # 1. Idempotency check
+        existing_id = self._channel_exists(tenant_id)
+        if existing_id:
+            logger.info(f"Notification channel for '{tenant_id}' already exists, skipping creation")
+            return {"config_id": existing_id, "already_exists": True}
+
+        # 2. Create the channel
         url = f"{self.base_url}/_plugins/_notifications/configs"
 
         payload = {
@@ -43,18 +71,53 @@ class OpenSearchClient:
         )
 
         if response.status_code in [200, 201]:
-            print(f"Notification channel for {tenant_id} created.")
+            logger.info(f"Notification channel for {tenant_id} created.")
             return response.json()
         else:
-            print(f"Error: {response.status_code} - {response.text}")
-            return None
+            logger.error(f"Failed to create notification channel: {response.status_code} - {response.text}")
+            raise OpenSearchAPIError(f"Failed to create notification channel for '{tenant_id}': {response.status_code} - {response.text}")
 
+
+    def _monitor_exists(self, tenant_id):
+        """Check if a monitor for the tenant already exists."""
+        url = f"{self.base_url}/_plugins/_alerting/monitors/_search"
+        monitor_name = f"Monitor-{tenant_id}"
+
+        query = {
+            "query": {
+                "term": {
+                    "monitor.name.keyword": monitor_name
+                }
+            }
+        }
+
+        try:
+            response = requests.post(
+                url,
+                auth=(self.user, self.password),
+                json=query,
+                verify=False
+            )
+            if response.status_code == 200:
+                hits = response.json().get('hits', {}).get('total', {}).get('value', 0)
+                return hits > 0
+            return False
+        except requests.exceptions.RequestException:
+            # If check fails, attempt creation anyway
+            return False
 
     def create_tenant_monitor(self, tenant_id, channel_id):
         """
         Create a Monitor that watches only logs from the specific Wazuh group
         and links it to the notification channel created earlier.
+        Idempotent: skips creation if monitor already exists.
         """
+        # 1. Idempotency check
+        if self._monitor_exists(tenant_id):
+            logger.info(f"Monitor for '{tenant_id}' already exists, skipping creation")
+            return {"already_exists": True}
+
+        # 2. Create the monitor
         url = f"{self.base_url}/_plugins/_alerting/monitors"
 
         # This query filters Wazuh logs by the specific group
@@ -99,18 +162,39 @@ class OpenSearchClient:
         response = requests.post(url, auth=(self.user, self.password), json=payload, verify=False)
 
         if response.status_code in [200, 201]:
-            print(f"Monitor for {tenant_id} created successfully.")
+            logger.info(f"Monitor for {tenant_id} created successfully.")
             return response.json().get('_id')
         else:
-            print(f"Error creating Monitor: {response.text}")
-            return None
+            logger.error(f"Error creating Monitor: {response.text}")
+            raise OpenSearchAPIError(f"Failed to create monitor for '{tenant_id}': {response.status_code} - {response.text}")
 
+
+    def _index_template_exists(self, tenant_id):
+        """Check if an index template for the tenant already exists."""
+        url = f"{self.base_url}/_index_template/template_{tenant_id}"
+
+        try:
+            response = requests.get(
+                url,
+                auth=(self.user, self.password),
+                verify=False
+            )
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
 
     def create_tenant_index_template(self, tenant_id):
         """
         Create an Index Template for the tenant. Ensures that customer logs
         end up in separate, optimized indices.
+        Idempotent: skips creation if template already exists.
         """
+        # 1. Idempotency check
+        if self._index_template_exists(tenant_id):
+            logger.info(f"Index template for '{tenant_id}' already exists, skipping creation")
+            return {"already_exists": True}
+
+        # 2. Create the template
         url = f"{self.base_url}/_index_template/template_{tenant_id}"
 
         payload = {
@@ -133,16 +217,39 @@ class OpenSearchClient:
         response = requests.put(url, auth=(self.user, self.password), json=payload, verify=False)
 
         if response.status_code in [200, 201]:
-            print(f"Index Template for {tenant_id} created.")
+            logger.info(f"Index Template for {tenant_id} created.")
             return True
-        return False
+        else:
+            logger.error(f"Failed to create index template for {tenant_id}: {response.text}")
+            raise OpenSearchAPIError(f"Failed to create index template for '{tenant_id}': {response.status_code} - {response.text}")
 
+
+    def _role_exists(self, tenant_id):
+        """Check if a DLS role for the tenant already exists."""
+        url = f"{self.base_url}/_plugins/_security/api/roles/{tenant_id}_role"
+
+        try:
+            response = requests.get(
+                url,
+                auth=(self.user, self.password),
+                verify=False
+            )
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
 
     def create_tenant_role(self, tenant_id):
         """
         Create an OpenSearch role with Document Level Security (DLS)
         to restrict log visibility to only the tenant's group.
+        Idempotent: skips creation if role already exists.
         """
+        # 1. Idempotency check
+        if self._role_exists(tenant_id):
+            logger.info(f"DLS role for '{tenant_id}' already exists, skipping creation")
+            return {"already_exists": True}
+
+        # 2. Create the role
         url = f"{self.base_url}/_plugins/_security/api/roles/{tenant_id}_role"
 
         payload = {
@@ -162,11 +269,11 @@ class OpenSearchClient:
         response = requests.put(url, auth=(self.user, self.password), json=payload, verify=False)
 
         if response.status_code in [200, 201]:
-            print(f"DLS role for {tenant_id} created successfully.")
+            logger.info(f"DLS role for {tenant_id} created successfully.")
             return True
         else:
-            print(f"Error creating role: {response.text}")
-            return False
+            logger.error(f"Error creating role: {response.text}")
+            raise OpenSearchAPIError(f"Failed to create DLS role for '{tenant_id}': {response.status_code} - {response.text}")
 
 # Quick test
 if __name__ == "__main__":
