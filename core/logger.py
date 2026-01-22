@@ -1,9 +1,23 @@
+"""
+Centralized logging configuration for the Wazuh Tenant Orchestrator.
+
+Provides dual output:
+- Console: For real-time developer feedback
+- File: For audit trails and debugging
+"""
 import logging
 import sys
 
-def setup_logger():
+
+def setup_logger() -> logging.Logger:
     """
-    Configures a professional logger that writes to both the console and a file.
+    Configure a logger that writes to both console and file.
+
+    The logger uses a consistent format across all outputs:
+    'YYYY-MM-DD HH:MM:SS - LEVEL - message'
+
+    Returns:
+        A configured Logger instance.
     """
     logger = logging.getLogger("TenantOrchestrator")
     logger.setLevel(logging.INFO)
@@ -19,12 +33,13 @@ def setup_logger():
     file_handler = logging.FileHandler('orchestrator.log')
     file_handler.setFormatter(formatter)
 
-    # Add handlers to the logger
+    # Add handlers only once (prevents duplicate logs on reimport)
     if not logger.handlers:
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
 
     return logger
 
+
 # Initialize the global logger instance
-logger = setup_logger()
+logger: logging.Logger = setup_logger()

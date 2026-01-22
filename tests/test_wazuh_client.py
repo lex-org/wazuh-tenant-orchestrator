@@ -12,23 +12,29 @@ KEY CONCEPTS:
 3. side_effect: Make a mock return different values on each call
 4. assert_called_with: Verify the mock was called with specific arguments
 
-IMPORTANT - WHERE TO PATCH:
----------------------------
-You patch where the function is USED, not where it's DEFINED.
-
-Example:
-    # wazuh_client.py imports requests and uses requests.get()
-    import requests
-    response = requests.get(url)
-
-    # In tests, we patch 'core.wazuh_client.requests' (where it's used)
-    # NOT 'requests' (where it's defined)
-    @patch('core.wazuh_client.requests')
+MOCKING requests.Session:
+-------------------------
+The Wazuh client uses requests.Session() for retry logic. We need to:
+1. Mock requests.Session to return a mock session object
+2. Mock session.get/post/put methods on that mock session
+3. Also mock requests.exceptions for error handling
 """
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 from core.wazuh_client import WazuhClient
 from core.exceptions import WazuhAPIError, ConfigurationError
+
+
+def create_mock_session():
+    """
+    Create a mock Session object that can be configured in tests.
+
+    Returns a MagicMock that acts like requests.Session() with
+    get, post, put methods that can be configured with return_value
+    or side_effect.
+    """
+    mock_session = MagicMock()
+    return mock_session
 
 
 # =============================================================================
@@ -41,10 +47,10 @@ class TestWazuhClientInit:
     @patch('core.wazuh_client.requests')
     def test_successful_authentication(
         self,
-        mock_requests,  # This is the patched 'requests' module
-        mock_env_vars,  # Fixture from conftest.py
-        mock_wazuh_auth_success,  # Fixture: fake 200 response with token
-        mock_wazuh_version  # Fixture: fake version response
+        mock_requests,
+        mock_env_vars,
+        mock_wazuh_auth_success,
+        mock_wazuh_version
     ):
         """
         Test that WazuhClient authenticates successfully and stores the token.
@@ -54,12 +60,13 @@ class TestWazuhClientInit:
         - Client extracts and stores the token from response
         - Client sets up headers with the token
         """
-        # ARRANGE: Configure mock to return our fake responses
-        # side_effect lets us return different responses for sequential calls
-        mock_requests.get.side_effect = [
+        # ARRANGE: Create mock session and configure its responses
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,  # 1st call: authenticate()
             mock_wazuh_version  # 2nd call: _get_wazuh_version()
         ]
+        mock_requests.Session.return_value = mock_session
 
         # ACT: Create the client (this triggers __init__ -> authenticate)
         client = WazuhClient()
@@ -75,7 +82,7 @@ class TestWazuhClientInit:
         self,
         mock_requests,
         mock_env_vars,
-        mock_wazuh_auth_failure  # Fixture: fake 401 response
+        mock_wazuh_auth_failure
     ):
         """
         Test that invalid credentials raise WazuhAPIError.
@@ -84,8 +91,10 @@ class TestWazuhClientInit:
         - When API returns 401, our code raises WazuhAPIError
         - The error message is helpful
         """
-        # ARRANGE: Configure mock to return 401
-        mock_requests.get.return_value = mock_wazuh_auth_failure
+        # ARRANGE: Configure mock session to return 401
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_wazuh_auth_failure
+        mock_requests.Session.return_value = mock_session
 
         # ACT & ASSERT: Verify exception is raised
         with pytest.raises(WazuhAPIError) as exc_info:
@@ -107,8 +116,10 @@ class TestWazuhClientInit:
         - When server is unreachable, our code catches the error
         - It raises our custom WazuhAPIError (not raw ConnectionError)
         """
-        # ARRANGE: Make requests.get() raise ConnectionError
-        mock_requests.get.side_effect = ConnectionError("Connection refused")
+        # ARRANGE: Make session.get() raise ConnectionError
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = ConnectionError("Connection refused")
+        mock_requests.Session.return_value = mock_session
         mock_requests.exceptions.ConnectionError = ConnectionError
 
         # ACT & ASSERT
@@ -144,12 +155,14 @@ class TestCreateGroup:
         3. Returns success response
         """
         # ARRANGE
-        mock_requests.get.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,  # authenticate()
             mock_wazuh_version,  # _get_wazuh_version()
             mock_wazuh_group_not_found  # _group_exists() check
         ]
-        mock_requests.post.return_value = mock_wazuh_group_created
+        mock_session.post.return_value = mock_wazuh_group_created
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = WazuhClient()
@@ -158,7 +171,7 @@ class TestCreateGroup:
         # ASSERT
         assert result["data"]["total_affected_items"] == 1
         # Verify POST was called (group was created)
-        mock_requests.post.assert_called_once()
+        mock_session.post.assert_called_once()
 
     @patch('core.wazuh_client.requests')
     def test_create_group_skips_when_exists(
@@ -167,7 +180,7 @@ class TestCreateGroup:
         mock_env_vars,
         mock_wazuh_auth_success,
         mock_wazuh_version,
-        mock_wazuh_group_exists  # Group already exists
+        mock_wazuh_group_exists
     ):
         """
         Test idempotency: existing group is not recreated.
@@ -178,11 +191,13 @@ class TestCreateGroup:
         3. Returns {"already_exists": True}
         """
         # ARRANGE
-        mock_requests.get.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,
             mock_wazuh_version,
             mock_wazuh_group_exists  # _group_exists() finds the group
         ]
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = WazuhClient()
@@ -191,7 +206,7 @@ class TestCreateGroup:
         # ASSERT
         assert result["already_exists"] is True
         # Verify POST was NOT called (no creation attempted)
-        mock_requests.post.assert_not_called()
+        mock_session.post.assert_not_called()
 
     @patch('core.wazuh_client.requests')
     def test_create_group_api_error_raises_exception(
@@ -206,7 +221,8 @@ class TestCreateGroup:
         Test that API errors during creation raise WazuhAPIError.
         """
         # ARRANGE
-        mock_requests.get.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,
             mock_wazuh_version,
             mock_wazuh_group_not_found
@@ -215,7 +231,8 @@ class TestCreateGroup:
         error_response = Mock()
         error_response.status_code = 500
         error_response.text = "Internal Server Error"
-        mock_requests.post.return_value = error_response
+        mock_session.post.return_value = error_response
+        mock_requests.Session.return_value = mock_session
 
         # ACT & ASSERT
         client = WazuhClient()
@@ -248,10 +265,12 @@ class TestApiSpecVersionHandling:
         version_response.status_code = 200
         version_response.json.return_value = {"data": {"version": "4.10.1"}}
 
-        mock_requests.get.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,
             version_response
         ]
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = WazuhClient()
@@ -274,10 +293,12 @@ class TestApiSpecVersionHandling:
         version_response.status_code = 200
         version_response.json.return_value = {"data": {"version": "99.99.99"}}
 
-        mock_requests.get.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [
             mock_wazuh_auth_success,
             version_response
         ]
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = WazuhClient()

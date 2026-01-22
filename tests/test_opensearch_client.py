@@ -7,11 +7,29 @@ Tests the OpenSearch client including idempotency checks for:
 - Monitors
 - Index templates
 - DLS roles
+
+MOCKING requests.Session:
+-------------------------
+The OpenSearch client uses requests.Session() for retry logic. We need to:
+1. Mock requests.Session to return a mock session object
+2. Mock session.get/post/put methods on that mock session
 """
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 from core.opensearch_client import OpenSearchClient
 from core.exceptions import OpenSearchAPIError
+
+
+def create_mock_session():
+    """
+    Create a mock Session object that can be configured in tests.
+
+    Returns a MagicMock that acts like requests.Session() with
+    get, post, put methods that can be configured with return_value
+    or side_effect.
+    """
+    mock_session = MagicMock()
+    return mock_session
 
 
 # =============================================================================
@@ -38,8 +56,10 @@ class TestCreateNotificationChannel:
         3. Returns response with config_id
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_no_channels
-        mock_requests.post.return_value = mock_opensearch_channel_created
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_no_channels
+        mock_session.post.return_value = mock_opensearch_channel_created
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -47,7 +67,7 @@ class TestCreateNotificationChannel:
 
         # ASSERT
         assert result["config_id"] == "channel_123"
-        mock_requests.post.assert_called_once()
+        mock_session.post.assert_called_once()
 
     @patch('core.opensearch_client.requests')
     def test_skips_creation_when_channel_exists(
@@ -69,7 +89,10 @@ class TestCreateNotificationChannel:
                 }
             ]
         }
-        mock_requests.get.return_value = existing_channel_response
+
+        mock_session = create_mock_session()
+        mock_session.get.return_value = existing_channel_response
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -78,7 +101,7 @@ class TestCreateNotificationChannel:
         # ASSERT
         assert result["already_exists"] is True
         assert result["config_id"] == "existing_channel_id"
-        mock_requests.post.assert_not_called()
+        mock_session.post.assert_not_called()
 
     @patch('core.opensearch_client.requests')
     def test_api_error_raises_exception(
@@ -91,11 +114,13 @@ class TestCreateNotificationChannel:
         Test that API errors raise OpenSearchAPIError.
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_no_channels
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_no_channels
         error_response = Mock()
         error_response.status_code = 500
         error_response.text = "Internal Server Error"
-        mock_requests.post.return_value = error_response
+        mock_session.post.return_value = error_response
+        mock_requests.Session.return_value = mock_session
 
         # ACT & ASSERT
         client = OpenSearchClient()
@@ -124,10 +149,12 @@ class TestCreateTenantMonitor:
         Test creating a new monitor.
         """
         # ARRANGE
-        mock_requests.post.side_effect = [
+        mock_session = create_mock_session()
+        mock_session.post.side_effect = [
             mock_opensearch_monitor_not_found,  # _monitor_exists() search
             mock_opensearch_monitor_created  # actual creation
         ]
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -135,7 +162,7 @@ class TestCreateTenantMonitor:
 
         # ASSERT
         assert result == "monitor_456"
-        assert mock_requests.post.call_count == 2
+        assert mock_session.post.call_count == 2
 
     @patch('core.opensearch_client.requests')
     def test_skips_creation_when_monitor_exists(
@@ -152,7 +179,10 @@ class TestCreateTenantMonitor:
         monitor_exists_response.json.return_value = {
             "hits": {"total": {"value": 1}, "hits": [{"_id": "existing_monitor"}]}
         }
-        mock_requests.post.return_value = monitor_exists_response
+
+        mock_session = create_mock_session()
+        mock_session.post.return_value = monitor_exists_response
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -161,7 +191,7 @@ class TestCreateTenantMonitor:
         # ASSERT
         assert result["already_exists"] is True
         # Only one POST call (the search), not two (search + create)
-        assert mock_requests.post.call_count == 1
+        assert mock_session.post.call_count == 1
 
 
 # =============================================================================
@@ -183,8 +213,10 @@ class TestCreateTenantIndexTemplate:
         Test creating a new index template.
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_404  # template doesn't exist
-        mock_requests.put.return_value = mock_opensearch_success
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_404  # template doesn't exist
+        mock_session.put.return_value = mock_opensearch_success
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -192,7 +224,7 @@ class TestCreateTenantIndexTemplate:
 
         # ASSERT
         assert result is True
-        mock_requests.put.assert_called_once()
+        mock_session.put.assert_called_once()
 
     @patch('core.opensearch_client.requests')
     def test_skips_creation_when_template_exists(
@@ -205,7 +237,9 @@ class TestCreateTenantIndexTemplate:
         Test idempotency: existing template is not recreated.
         """
         # ARRANGE: GET returns 200 (template exists)
-        mock_requests.get.return_value = mock_opensearch_success
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_success
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -213,7 +247,7 @@ class TestCreateTenantIndexTemplate:
 
         # ASSERT
         assert result["already_exists"] is True
-        mock_requests.put.assert_not_called()
+        mock_session.put.assert_not_called()
 
 
 # =============================================================================
@@ -235,8 +269,10 @@ class TestCreateTenantRole:
         Test creating a new DLS role.
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_404
-        mock_requests.put.return_value = mock_opensearch_role_created
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_404
+        mock_session.put.return_value = mock_opensearch_role_created
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -244,7 +280,7 @@ class TestCreateTenantRole:
 
         # ASSERT
         assert result is True
-        mock_requests.put.assert_called_once()
+        mock_session.put.assert_called_once()
 
     @patch('core.opensearch_client.requests')
     def test_skips_creation_when_role_exists(
@@ -257,7 +293,9 @@ class TestCreateTenantRole:
         Test idempotency: existing role is not recreated.
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_success
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_success
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
@@ -265,7 +303,7 @@ class TestCreateTenantRole:
 
         # ASSERT
         assert result["already_exists"] is True
-        mock_requests.put.assert_not_called()
+        mock_session.put.assert_not_called()
 
     @patch('core.opensearch_client.requests')
     def test_api_error_raises_exception(
@@ -278,11 +316,13 @@ class TestCreateTenantRole:
         Test that API errors raise OpenSearchAPIError.
         """
         # ARRANGE
-        mock_requests.get.return_value = mock_opensearch_404
+        mock_session = create_mock_session()
+        mock_session.get.return_value = mock_opensearch_404
         error_response = Mock()
         error_response.status_code = 403
         error_response.text = "Forbidden"
-        mock_requests.put.return_value = error_response
+        mock_session.put.return_value = error_response
+        mock_requests.Session.return_value = mock_session
 
         # ACT & ASSERT
         client = OpenSearchClient()
@@ -323,10 +363,12 @@ class TestOpenSearchClientWorkflow:
         no_role = Mock(status_code=404)
         role_created = Mock(status_code=200)
 
-        # Configure mock responses
-        mock_requests.get.side_effect = [no_channel, no_template, no_role]
-        mock_requests.post.side_effect = [channel_created, no_monitor, monitor_created]
-        mock_requests.put.side_effect = [template_created, role_created]
+        # Configure mock session
+        mock_session = create_mock_session()
+        mock_session.get.side_effect = [no_channel, no_template, no_role]
+        mock_session.post.side_effect = [channel_created, no_monitor, monitor_created]
+        mock_session.put.side_effect = [template_created, role_created]
+        mock_requests.Session.return_value = mock_session
 
         # ACT
         client = OpenSearchClient()
