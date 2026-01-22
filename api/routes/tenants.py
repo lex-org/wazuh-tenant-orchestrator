@@ -45,7 +45,6 @@ async def create_tenant(
     - OpenSearch alerting monitor
     - OpenSearch DLS role for data isolation
     """
-    # Validate tenant_id
     if not validate_tenant_name(tenant.tenant_id):
         raise HTTPException(
             status_code=422,
@@ -53,7 +52,6 @@ async def create_tenant(
             "Must be 3-64 alphanumeric characters, hyphens, or underscores."
         )
 
-    # Validate webhook_url (additional validation beyond Pydantic)
     if not validate_webhook_url(str(tenant.webhook_url)):
         raise HTTPException(
             status_code=422,
@@ -63,39 +61,16 @@ async def create_tenant(
 
     verify_ssl = settings.SSL_VERIFY
     already_existed = False
-    channel_id = None
-    monitor_id = None
 
     try:
-        # 1. Create Wazuh agent group
-        logger.info(f"API: Starting provisioning for tenant: {tenant.tenant_id}")
-        w_client = WazuhClient(verify_ssl=verify_ssl)
-        group_result = w_client.create_group(tenant.tenant_id)
-        if group_result.get("already_exists"):
-            already_existed = True
+        already_existed = await createWazuhAgentGroup(already_existed, tenant, verify_ssl)
 
-        # 2. Create OpenSearch notification channel
-        os_client = OpenSearchClient(verify_ssl=verify_ssl)
-        channel_result = os_client.create_notification_channel(
-            tenant.tenant_id, str(tenant.webhook_url)
-        )
-        channel_id = channel_result.get("config_id")
-        if channel_result.get("already_exists"):
-            already_existed = True
+        already_existed, channel_id, os_client = await createOsNotificationChannel(already_existed, tenant,
+                                                                                   verify_ssl)
 
-        # 3. Create OpenSearch monitor
-        monitor_result = os_client.create_tenant_monitor(tenant.tenant_id, channel_id)
-        if isinstance(monitor_result, dict):
-            if monitor_result.get("already_exists"):
-                already_existed = True
-            monitor_id = monitor_result.get("monitor_id")
-        else:
-            monitor_id = monitor_result
+        already_existed, monitor_id = await createOsMonitor(already_existed, channel_id, os_client, tenant)
 
-        # 4. Create OpenSearch DLS role
-        role_result = os_client.create_tenant_role(tenant.tenant_id)
-        if isinstance(role_result, dict) and role_result.get("already_exists"):
-            already_existed = True
+        already_existed = await createOsDLSRole(already_existed, os_client, tenant)
 
         logger.info(f"API: Provisioning completed for tenant: {tenant.tenant_id}")
 
@@ -120,6 +95,44 @@ async def create_tenant(
     except OpenSearchAPIError as e:
         logger.error(f"API: OpenSearch API error for tenant {tenant.tenant_id}: {e}")
         raise HTTPException(status_code=502, detail=f"OpenSearch API error: {e}")
+
+
+async def createOsDLSRole(already_existed, os_client, tenant):
+    role_result = os_client.create_tenant_role(tenant.tenant_id)
+    if isinstance(role_result, dict) and role_result.get("already_exists"):
+        already_existed = True
+    return already_existed
+
+
+async def createOsMonitor(already_existed, channel_id, os_client, tenant):
+    monitor_result = os_client.create_tenant_monitor(tenant.tenant_id, channel_id)
+    if isinstance(monitor_result, dict):
+        if monitor_result.get("already_exists"):
+            already_existed = True
+        monitor_id = monitor_result.get("monitor_id")
+    else:
+        monitor_id = monitor_result
+    return already_existed, monitor_id
+
+
+async def createOsNotificationChannel(already_existed, tenant, verify_ssl):
+    os_client = OpenSearchClient(verify_ssl=verify_ssl)
+    channel_result = os_client.create_notification_channel(
+        tenant.tenant_id, str(tenant.webhook_url)
+    )
+    channel_id = channel_result.get("config_id")
+    if channel_result.get("already_exists"):
+        already_existed = True
+    return already_existed, channel_id, os_client
+
+
+async def createWazuhAgentGroup(already_existed, tenant, verify_ssl):
+    logger.info(f"API: Starting provisioning for tenant: {tenant.tenant_id}")
+    w_client = WazuhClient(verify_ssl=verify_ssl)
+    group_result = w_client.create_group(tenant.tenant_id)
+    if group_result.get("already_exists"):
+        already_existed = True
+    return already_existed
 
 
 @router.get(

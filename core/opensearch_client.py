@@ -4,6 +4,7 @@ OpenSearch API client for multi-tenant provisioning.
 Handles creation of notification channels, monitors, index templates,
 and Document Level Security (DLS) roles for tenant isolation.
 """
+import json
 import os
 from typing import Any
 
@@ -63,7 +64,6 @@ class OpenSearchClient:
         self.base_url: str = f"https://{self.host}:{self.port}"
         self.verify_ssl: bool = verify_ssl
 
-        # Parse timeout from environment or use default
         timeout_str = os.getenv('OPENSEARCH_TIMEOUT')
         if timeout_str:
             try:
@@ -74,14 +74,12 @@ class OpenSearchClient:
         else:
             self.timeout = DEFAULT_TIMEOUT
 
-        # Configure retry strategy with exponential backoff
-        # This handles transient failures gracefully
         retry_strategy = Retry(
             total=DEFAULT_RETRIES,
             backoff_factor=DEFAULT_BACKOFF_FACTOR,
             status_forcelist=RETRY_STATUS_CODES,
-            allowed_methods=["GET", "POST", "PUT"],  # Safe methods to retry
-            raise_on_status=False,  # Don't raise, let us handle status codes
+            allowed_methods=["GET", "POST", "PUT"],
+            raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session = requests.Session()
@@ -135,7 +133,6 @@ class OpenSearchClient:
         Raises:
             OpenSearchAPIError: If channel creation fails.
         """
-        # 1. Idempotency check
         existing_id = self.channel_exists(tenant_id)
         if existing_id:
             logger.info(
@@ -144,7 +141,6 @@ class OpenSearchClient:
             )
             return {"config_id": existing_id, "already_exists": True}
 
-        # 2. Create the channel
         url = f"{self.base_url}/_plugins/_notifications/configs"
 
         payload = {
@@ -241,16 +237,13 @@ class OpenSearchClient:
         Raises:
             OpenSearchAPIError: If monitor creation fails.
         """
-        # 1. Idempotency check
         existing_id = self.monitor_exists(tenant_id)
         if existing_id:
             logger.info(f"Monitor for '{tenant_id}' already exists, skipping creation")
             return {"monitor_id": existing_id, "already_exists": True}
 
-        # 2. Create the monitor
         url = f"{self.base_url}/_plugins/_alerting/monitors"
 
-        # This query filters Wazuh logs by the specific group
         query_filter = {
             "query": {
                 "bool": {
@@ -354,14 +347,12 @@ class OpenSearchClient:
         Raises:
             OpenSearchAPIError: If template creation fails.
         """
-        # 1. Idempotency check
         if self._index_template_exists(tenant_id):
             logger.info(
                 f"Index template for '{tenant_id}' already exists, skipping creation"
             )
             return {"already_exists": True}
 
-        # 2. Create the template
         url = f"{self.base_url}/_index_template/template_{tenant_id}"
 
         payload = {
@@ -443,26 +434,22 @@ class OpenSearchClient:
         Raises:
             OpenSearchAPIError: If role creation fails.
         """
-        # 1. Idempotency check
         if self.role_exists(tenant_id):
             logger.info(
                 f"DLS role for '{tenant_id}' already exists, skipping creation"
             )
             return {"already_exists": True}
 
-        # 2. Create the role
         url = f"{self.base_url}/_plugins/_security/api/roles/{tenant_id}_role"
+
+        dls_query = json.dumps({"term": {"agent.group.keyword": tenant_id}})
 
         payload = {
             "cluster_permissions": ["read"],
             "index_permissions": [{
                 "index_patterns": ["wazuh-alerts-*"],
                 "allowed_actions": ["read", "search"],
-                "dls": {
-                    "term": {
-                        "agent.group.keyword": tenant_id
-                    }
-                }
+                "dls": dls_query
             }]
         }
 
@@ -609,12 +596,3 @@ class OpenSearchClient:
                 f"Failed to delete DLS role for '{tenant_id}': "
                 f"{response.status_code} - {response.text}"
             )
-
-
-# Quick test
-if __name__ == "__main__":
-    os_client = OpenSearchClient()
-    os_client.create_notification_channel(
-        "Test_Client",
-        "http://host.docker.internal:8000/api/v1/tickets"
-    )

@@ -41,18 +41,6 @@ def validate_tenant_name(name: str) -> bool:
 
 
 def str_to_bool(value: str | None) -> bool:
-    """
-    Convert an environment variable string to a boolean.
-
-    Recognizes common truthy values: "true", "1", "yes" (case-insensitive).
-    Everything else (including None) returns False.
-
-    Args:
-        value: The string value to convert.
-
-    Returns:
-        True if value represents a truthy string, False otherwise.
-    """
     return str(value).lower() in ("true", "1", "yes")
 
 
