@@ -29,10 +29,15 @@ python = ">=3.11"
 requests = ">=2.32.5"
 python-dotenv = ">=1.0.0"
 urllib3 = ">=2.0.0"
+fastapi = ">=0.115.0"
+uvicorn = {extras = ["standard"], version = ">=0.34.0"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
 pytest-mock = ">=3.12.0"
+pytest-cov = ">=4.1.0"  # Code coverage reporting
+pre-commit = ">=3.6.0"  # Git hooks for code quality
+httpx = ">=0.27.0"  # For FastAPI test client
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -41,3 +46,44 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+addopts = "--cov=core --cov=api --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["core", "api"]
+branch = true
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+# Ruff configuration (linter + formatter)
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", "__pycache__", ".git"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+]
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core"]
+
+# Bandit security scanner configuration
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101"]  # Skip assert warnings (OK in tests)
