@@ -82,7 +82,24 @@ OPENSEARCH_HOST=your-opensearch.com
 OPENSEARCH_PORT=9200
 OPENSEARCH_USER=admin
 OPENSEARCH_PASSWORD=your-password
+
+# SSL Verification (default: True)
+SSL_VERIFY=True
 ```
+
+### SSL Verification
+
+By default, SSL certificate verification is **enabled** for security. If you're testing locally with self-signed certificates, you can disable it:
+
+```bash
+# Option 1: Use the --insecure flag
+python main.py --tenant "Test" --webhook "https://example.com" --insecure
+
+# Option 2: Set in .env file
+SSL_VERIFY=False
+```
+
+> ⚠️ **Warning:** Only disable SSL verification in development/testing environments. Always use valid certificates in production.
 
 ## Usage
 
