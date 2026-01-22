@@ -21,7 +21,7 @@ Example: test_validate_tenant_name_with_valid_input_returns_true
          prefix                  scenario         expected result
 """
 import pytest
-from core.utils import validate_tenant_name, str_to_bool
+from core.utils import validate_tenant_name, str_to_bool, validate_webhook_url
 
 
 # =============================================================================
@@ -36,13 +36,13 @@ class TestValidateTenantName:
 
     def test_valid_alphanumeric_name_returns_true(self):
         """Valid tenant names should return True."""
-        # ARRANGE: Define valid inputs
+        # ARRANGE: Define valid inputs (must be 3-64 characters)
         valid_names = [
             "tenant1",
             "my_tenant",
             "my-tenant",
             "Tenant_123",
-            "a",  # single character
+            "abc",  # minimum length (3 characters)
             "UPPERCASE",
             "MixedCase123",
         ]
@@ -51,6 +51,27 @@ class TestValidateTenantName:
         for name in valid_names:
             result = validate_tenant_name(name)
             assert result is True, f"Expected True for '{name}', got {result}"
+
+    def test_invalid_name_too_short_returns_false(self):
+        """Names shorter than 3 characters should be rejected."""
+        # ARRANGE
+        short_names = ["a", "ab", ""]
+
+        # ACT & ASSERT
+        for name in short_names:
+            result = validate_tenant_name(name)
+            assert result is False, f"Expected False for '{name}', got {result}"
+
+    def test_invalid_name_too_long_returns_false(self):
+        """Names longer than 64 characters should be rejected."""
+        # ARRANGE
+        long_name = "a" * 65
+
+        # ACT
+        result = validate_tenant_name(long_name)
+
+        # ASSERT
+        assert result is False
 
     def test_invalid_name_with_spaces_returns_false(self):
         """Names with spaces should be rejected."""
@@ -149,3 +170,71 @@ def test_validate_tenant_name_parametrized(input_name, expected):
     """
     result = validate_tenant_name(input_name)
     assert result == expected
+
+
+# =============================================================================
+# TESTS FOR: validate_webhook_url()
+# =============================================================================
+
+class TestValidateWebhookUrl:
+    """Tests for the validate_webhook_url function."""
+
+    def test_valid_https_url_returns_true(self):
+        """Valid HTTPS URLs should return True."""
+        valid_urls = [
+            "https://example.com/webhook",
+            "https://api.example.com/v1/alerts",
+            "https://localhost:8080/hook",
+            "https://192.168.1.1:9000/api",
+        ]
+
+        for url in valid_urls:
+            result = validate_webhook_url(url)
+            assert result is True, f"Expected True for '{url}'"
+
+    def test_valid_http_url_returns_true(self):
+        """Valid HTTP URLs should return True (allowed for local testing)."""
+        valid_urls = [
+            "http://localhost:8000/webhook",
+            "http://127.0.0.1:5000/api",
+        ]
+
+        for url in valid_urls:
+            result = validate_webhook_url(url)
+            assert result is True, f"Expected True for '{url}'"
+
+    def test_invalid_url_without_scheme_returns_false(self):
+        """URLs without http/https scheme should be rejected."""
+        invalid_urls = [
+            "example.com/webhook",
+            "www.example.com/hook",
+            "ftp://example.com/file",
+        ]
+
+        for url in invalid_urls:
+            result = validate_webhook_url(url)
+            assert result is False, f"Expected False for '{url}'"
+
+    def test_invalid_url_without_host_returns_false(self):
+        """URLs without a host should be rejected."""
+        invalid_urls = [
+            "https://",
+            "http://",
+            "https:///path",
+        ]
+
+        for url in invalid_urls:
+            result = validate_webhook_url(url)
+            assert result is False, f"Expected False for '{url}'"
+
+    def test_random_string_returns_false(self):
+        """Random strings that aren't URLs should be rejected."""
+        invalid_inputs = [
+            "not-a-url",
+            "just some text",
+            "",
+        ]
+
+        for input_val in invalid_inputs:
+            result = validate_webhook_url(input_val)
+            assert result is False, f"Expected False for '{input_val}'"
