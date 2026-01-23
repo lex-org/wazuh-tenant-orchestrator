@@ -165,6 +165,10 @@ wazuh-tenant-orchestrator/
 ├── core/
 │   ├── wazuh_client.py      # Wazuh API client (auth, groups)
 │   └── opensearch_client.py # OpenSearch client (channels, monitors, roles)
+├── api/
+│   ├── main.py              # FastAPI application
+│   ├── routes/              # REST endpoints
+│   └── schemas.py           # Request/response models
 ├── tests/                   # Unit tests
 ├── main.py                  # CLI entry point
 ├── .env.example             # Configuration template

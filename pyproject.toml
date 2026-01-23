@@ -2,7 +2,7 @@
 name = "wazuh-tenant-orchestrator"
 version = "0.1.0"
 description = "CLI tool for automated multi-tenant provisioning on Wazuh SIEM"
-authors = ["Your Name <lex-org>"]
+authors = ["lex-org"]
 readme = "README.md"
 license = "MIT"
 keywords = ["wazuh", "siem", "multi-tenancy", "msp", "security", "opensearch"]
