@@ -2,7 +2,7 @@
 name = "wazuh-tenant-orchestrator"
 version = "0.1.0"
 description = "CLI tool for automated multi-tenant provisioning on Wazuh SIEM"
-authors = ["Your Name <you@example.com>"]
+authors = ["Your Name <lex-org>"]
 readme = "README.md"
 license = "MIT"
 keywords = ["wazuh", "siem", "multi-tenancy", "msp", "security", "opensearch"]
@@ -20,9 +20,9 @@ classifiers = [
 ]
 
 [tool.poetry.urls]
-Homepage = "https://github.com/yourusername/wazuh-tenant-orchestrator"
-Repository = "https://github.com/yourusername/wazuh-tenant-orchestrator"
-Issues = "https://github.com/yourusername/wazuh-tenant-orchestrator/issues"
+Homepage = "https://github.com/lex-org/wazuh-tenant-orchestrator"
+Repository = "https://github.com/lex-org/wazuh-tenant-orchestrator"
+Issues = "https://github.com/lex-org/wazuh-tenant-orchestrator/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.11"

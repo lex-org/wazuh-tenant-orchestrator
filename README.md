@@ -187,7 +187,7 @@ poetry run pytest
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome - open an issue or submit a PR.
 
 ## License
 

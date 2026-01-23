@@ -1,0 +1,127 @@
+# =============================================================================
+# CI Pipeline for Wazuh Tenant Orchestrator
+# =============================================================================
+# This workflow runs on every push and pull request to ensure code quality.
+#
+# What it does:
+#   1. Runs tests on multiple Python versions (matrix testing)
+#   2. Generates code coverage reports
+#   3. Runs linting checks (when pre-commit is configured)
+#
+# Why matrix testing?
+#   Your pyproject.toml says "python >= 3.11", so we test on 3.11 and 3.12
+#   to ensure compatibility across supported versions.
+# =============================================================================
+
+name: CI
+
+# When to run this workflow
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Prevent duplicate runs - if you push twice quickly, cancel the first run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # TEST JOB
+  # ===========================================================================
+  # Runs pytest across multiple Python versions
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    # Matrix strategy: run this job multiple times with different Python versions
+    strategy:
+      fail-fast: false  # Don't cancel other versions if one fails
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python with the version from our matrix
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Step 3: Install Poetry (our dependency manager)
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true  # Creates .venv in project dir
+
+      # Step 4: Cache dependencies to speed up future runs
+      # If poetry.lock hasn't changed, reuse cached dependencies
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ matrix.python-version }}-
+
+      # Step 5: Install project dependencies
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      # Step 6: Run tests with coverage
+      - name: Run tests with coverage
+        run: poetry run pytest --cov=core --cov-report=xml --cov-report=term-missing
+
+      # Step 7: Upload coverage to Codecov (optional but recommended)
+      # This creates a badge and tracks coverage over time
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'  # Only upload once
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false  # Don't fail if Codecov is down
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ===========================================================================
+  # LINT JOB
+  # ===========================================================================
+  # Runs code quality checks (will work once pre-commit is configured)
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      # Run pre-commit hooks on all files
+      # This will fail gracefully if pre-commit isn't configured yet
+      - name: Run pre-commit
+        run: |
+          if [ -f .pre-commit-config.yaml ]; then
+            poetry run pre-commit run --all-files
+          else
+            echo "No pre-commit config found, skipping lint checks"
+          fi
