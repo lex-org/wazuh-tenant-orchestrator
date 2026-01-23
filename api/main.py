@@ -34,7 +34,6 @@ app = FastAPI(
 )
 
 
-# Exception handlers
 @app.exception_handler(ConfigurationError)
 async def configuration_error_handler(
     request: Request, exc: ConfigurationError
@@ -83,7 +82,6 @@ async def opensearch_api_error_handler(
     )
 
 
-# Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(tenants.router, prefix="/api/v1", tags=["tenants"])
 

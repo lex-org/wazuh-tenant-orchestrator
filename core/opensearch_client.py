@@ -19,13 +19,10 @@ from core.logger import logger
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Default timeout for API requests (connect_timeout, read_timeout) in seconds
-# Can be overridden via OPENSEARCH_TIMEOUT environment variable
 DEFAULT_TIMEOUT: tuple[int, int] = (10, 30)
 
-# Default retry configuration
 DEFAULT_RETRIES: int = 3
-DEFAULT_BACKOFF_FACTOR: float = 1.0  # Waits 1s, 2s, 4s between retries
+DEFAULT_BACKOFF_FACTOR: float = 1.0
 RETRY_STATUS_CODES: list[int] = [429, 500, 502, 503, 504]
 
 
@@ -211,7 +208,6 @@ class OpenSearchClient:
                     return hits[0].get('_id')
             return None
         except requests.exceptions.RequestException:
-            # If check fails, attempt creation anyway
             return None
 
     def create_tenant_monitor(

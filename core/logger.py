@@ -22,18 +22,14 @@ def setup_logger() -> logging.Logger:
     logger = logging.getLogger("TenantOrchestrator")
     logger.setLevel(logging.INFO)
 
-    # Format: Timestamp - Level - Message
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-    # Handler 1: Console (for the developer to see)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
 
-    # Handler 2: File (for the MSP to audit later)
     file_handler = logging.FileHandler('orchestrator.log')
     file_handler.setFormatter(formatter)
 
-    # Add handlers only once (prevents duplicate logs on reimport)
     if not logger.handlers:
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
@@ -41,5 +37,4 @@ def setup_logger() -> logging.Logger:
     return logger
 
 
-# Initialize the global logger instance
 logger: logging.Logger = setup_logger()

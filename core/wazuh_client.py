@@ -17,16 +17,12 @@ from urllib3.util.retry import Retry
 from core.exceptions import ConfigurationError, WazuhAPIError
 from core.logger import logger
 
-# Disable SSL warnings for self-signed certificates (common in test/Docker environments)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Default timeout for API requests (connect_timeout, read_timeout) in seconds
-# Can be overridden via WAZUH_TIMEOUT environment variable
 DEFAULT_TIMEOUT: tuple[int, int] = (10, 30)
 
-# Default retry configuration
 DEFAULT_RETRIES: int = 3
-DEFAULT_BACKOFF_FACTOR: float = 1.0  # Waits 1s, 2s, 4s between retries
+DEFAULT_BACKOFF_FACTOR: float = 1.0
 RETRY_STATUS_CODES: list[int] = [429, 500, 502, 503, 504]
 
 
@@ -70,7 +66,6 @@ class WazuhClient:
         self.headers: dict[str, str] = {}
         self.api_spec: dict[str, Any] = self._load_api_spec()
 
-        # Parse timeout from environment or use default
         timeout_str = os.getenv('WAZUH_TIMEOUT')
         if timeout_str:
             try:
@@ -81,24 +76,19 @@ class WazuhClient:
         else:
             self.timeout = DEFAULT_TIMEOUT
 
-        # Configure retry strategy with exponential backoff
-        # This handles transient failures gracefully
         retry_strategy = Retry(
             total=DEFAULT_RETRIES,
             backoff_factor=DEFAULT_BACKOFF_FACTOR,
             status_forcelist=RETRY_STATUS_CODES,
-            allowed_methods=["GET", "POST"],  # Safe methods to retry
-            raise_on_status=False,  # Don't raise, let us handle status codes
+            allowed_methods=["GET", "POST"],
+            raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session = requests.Session()
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
 
-        # --- STARTUP FLOW ---
-        # 1. Authentication (generates token and populates self.headers)
         self.authenticate()
-        # 2. Version detection (needed to choose the strategy from JSON)
         self.version: str = self._get_wazuh_version()
         logger.info(f"Detected Wazuh version: {self.version}")
 
@@ -187,7 +177,6 @@ class WazuhClient:
             )
             if res.status_code == 200:
                 full_version = res.json()['data']['version']
-                # Transform "4.10.1" to "4.10.x" for JSON mapping
                 return ".".join(full_version.split('.')[:2]) + ".x"
             return "default"
         except requests.exceptions.RequestException:
@@ -217,7 +206,6 @@ class WazuhClient:
                 return any(g.get('name') == group_id for g in groups)
             return False
         except requests.exceptions.RequestException:
-            # If check fails, attempt creation anyway
             return False
 
     def create_group(self, group_id: str) -> dict[str, Any]:
@@ -236,12 +224,10 @@ class WazuhClient:
         Raises:
             WazuhAPIError: If group creation fails.
         """
-        # 1. Idempotency check
         if self.group_exists(group_id):
             logger.info(f"Group '{group_id}' already exists, skipping creation")
             return {"already_exists": True}
 
-        # 2. Get version-specific config or fall back to default
         spec = self.api_spec['wazuh_api_versions'].get(
             self.version,
             self.api_spec['wazuh_api_versions']['default']
@@ -249,7 +235,6 @@ class WazuhClient:
         config = spec.get('create_group', {})
         url = f"{self.base_url}/groups"
 
-        # 3. Apply strategy: Body (newer versions) or Params (older versions)
         if config.get('use_body'):
             payload = {config['payload_key']: group_id}
             response = self.session.post(
@@ -322,9 +307,7 @@ class WazuhClient:
             )
 
 
-# --- Example usage ---
 if __name__ == "__main__":
     client = WazuhClient()
-    # If authentication succeeded in __init__
     if client.token:
         client.create_group("Test_Client_Orchestrator")

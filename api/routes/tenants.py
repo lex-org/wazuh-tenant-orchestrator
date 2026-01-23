@@ -204,12 +204,10 @@ async def delete_tenant(
     try:
         logger.info(f"API: Starting deletion for tenant: {tenant_id}")
 
-        # 1. Delete Wazuh agent group
         w_client = WazuhClient(verify_ssl=verify_ssl)
         if w_client.delete_group(tenant_id):
             deleted_resources.append("group")
 
-        # 2. Delete OpenSearch resources
         os_client = OpenSearchClient(verify_ssl=verify_ssl)
 
         if os_client.delete_tenant_monitor(tenant_id):

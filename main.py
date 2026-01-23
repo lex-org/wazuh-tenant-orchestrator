@@ -43,15 +43,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # 1. Input Validation
     if not validate_tenant_name(args.tenant):
         sys.exit(1)
 
     if not validate_webhook_url(args.webhook):
         sys.exit(1)
 
-    # 2. SSL Verification Logic
-    # Priority: --insecure flag > .env SSL_VERIFY > default (True)
     env_verify = str_to_bool(os.getenv("SSL_VERIFY", "True"))
     verify_ssl = False if args.insecure else env_verify
 
@@ -63,19 +60,15 @@ def main() -> None:
     logger.info(f"Starting provisioning for: {args.tenant}")
 
     try:
-        # 3. Wazuh operation: Create agent group
         w_client = WazuhClient(verify_ssl=verify_ssl)
         w_client.create_group(args.tenant)
 
-        # 4. OpenSearch operation: Create notification channel
         os_client = OpenSearchClient(verify_ssl=verify_ssl)
         os_res = os_client.create_notification_channel(args.tenant, args.webhook)
         channel_id = os_res.get('config_id')
 
-        # 5. OpenSearch operation: Create alerting monitor
         os_client.create_tenant_monitor(args.tenant, channel_id)
 
-        # 6. OpenSearch operation: Create DLS role for data isolation
         os_client.create_tenant_role(args.tenant)
 
         logger.info("Provisioning completed successfully!")
