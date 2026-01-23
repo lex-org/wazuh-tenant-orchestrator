@@ -1,4 +1,5 @@
 [tool.poetry]
+package-mode = false
 name = "wazuh-tenant-orchestrator"
 version = "0.1.0"
 description = "CLI tool for automated multi-tenant provisioning on Wazuh SIEM"
