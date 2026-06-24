@@ -6,6 +6,8 @@
 
 A CLI tool for automated multi-tenant provisioning on Wazuh SIEM. Designed for MSPs (Managed Service Providers) and SOCs managing multiple customers on a single Wazuh instance.
 
+📖 [Full walkthrough and architecture guide](https://soc-mate.com/blog/2026-01-29-wazuh-multitenant-orchestrator/)
+
 ## Problem
 
 When managing multiple tenants on a single Wazuh deployment, you need to manually:
